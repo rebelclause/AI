@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: py.Dockerfile
+    container_name: python_backend
+    restart: unless-stopped
+    volumes:
+      - .:/app  # Mount current directory to /app for development; consider removing for production
+    expose:
+      - "5000" # Expose port 5000 to other services in the Docker network, not to the host
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: node.Dockerfile
+    container_name: node_frontend
+    restart: unless-stopped
+    volumes:
+      - .:/usr/src/app # Mount current directory; consider specific frontend source path
+      - /usr/src/app/node_modules # Keep node_modules from image, not host
+    expose:
+      - "3000" # Expose port 3000 to other services, not to the host
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  db:
+    build:
+      context: .
+      dockerfile: db.Dockerfile
+    container_name: timescaledb_pgvector
+    restart: unless-stopped
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data # Persist database data
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: appdb
+    expose:
+      - "5432" # Expose port 5432 to other services, not to the host
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d appdb"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s # Give more time for DB to initialize
+    # Add TimescaleDB specific settings if needed, e.g., shared_preload_libraries
+    # command: ["postgres", "-c", "shared_preload_libraries=timescaledb,pg_stat_statements"] # Example
+
+  caddy:
+    build:
+      context: .
+      dockerfile: caddy.Dockerfile
+    container_name: caddy_server
+    restart: unless-stopped
+    ports:
+      - "80:80"   # Map host port 80 to container port 80 (HTTP)
+      - "443:443" # Map host port 443 to container port 443 (HTTPS)
+      - "443:443/udp" # For HTTP/3
+    volumes:
+      - caddy_data:/data # Persists Caddy's state including certificates
+      - caddy_config:/config
+      # If you want to edit Caddyfile live, you can mount it:
+      # - ./Caddyfile:/etc/caddy/Caddyfile
+    networks:
+      - app-network
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:80/ || exit 1"] # Caddy serves on port 80 by default internally before TLS
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+
+volumes:
+  timescaledb_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

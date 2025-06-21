@@ -1,0 +1,44 @@
+{
+    # Global options block
+    # Email for ACME (Let's Encrypt)
+    # Replace with your actual email in production
+    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory # Staging CA for testing
+    # acme_ca https://acme-v02.api.letsencrypt.org/directory # Production CA
+    email your-email@example.com
+}
+
+# Define a site for your domain
+# Replace localhost with your domain in production
+localhost {
+    # Reverse proxy requests to the Node.js frontend service (on port 3000)
+    # All requests that don't match /api/* will go here
+    reverse_proxy /* frontend:3000
+
+    # Reverse proxy requests to the Python backend service (on port 5000)
+    # Requests to /api/* will go to the backend
+    reverse_proxy /api/* backend:5000
+
+    # Enable gzip compression
+    encode gzip
+
+    # Log configuration
+    log {
+        output stdout
+        format console
+    }
+
+    # Automatic HTTPS
+    # Caddy handles this automatically for public domain names.
+    # For localhost, it will generate a self-signed certificate.
+    # tls internal # Use for self-signed certs if not using a public domain or for local dev
+}
+
+# If you have multiple domains or subdomains, you can define them similarly:
+#
+# sub.yourdomain.com {
+#     reverse_proxy ...
+# }
+#
+# anotherdomain.com {
+#     reverse_proxy ...
+# }
